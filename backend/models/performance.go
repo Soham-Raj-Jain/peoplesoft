@@ -10,4 +10,5 @@ type Performance struct {
 	Comments   string
 	ReviewerID uint
 	CreatedAt  time.Time
+	Score      float64 `json:"score"`
 }

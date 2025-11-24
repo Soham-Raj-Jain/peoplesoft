@@ -1,77 +1,222 @@
-import React, { useMemo, useState } from 'react'
-import Goals from './Goals'
-import SelfAssessment from './SelfAssessment'
-import ManagerReview from './ManagerReview'
-import PerfReports from './PerfReports'
-import client from '../api/client' // if you later want to fetch cycles here
+import React, { useState, useEffect } from 'react'
+import client from '../api/client'
 
 export default function Performance() {
-  const role = localStorage.getItem('role') || 'employee'
-  const [tab, setTab] = useState('goals') // goals | self | manager | reports | history
+    const userRole = localStorage.getItem('role')
+    const userEmail = localStorage.getItem('email')
 
-  const Tabs = useMemo(() => ([
-    { key: 'goals',    label: 'Goals' },
-    { key: 'self',     label: 'Self Assessment' },
-    ...(role === 'admin' || role === 'manager' ? [{ key: 'manager', label: 'Manager Review' }] : []),
-    ...(role === 'admin' ? [{ key: 'reports', label: 'Reports' }] : []),
-    { key: 'history',  label: 'My Reviews' }
-  ]), [role])
+    const [performances, setPerformances] = useState([])
+    const [loading, setLoading] = useState(true)
+    const [selectedPerformance, setSelectedPerformance] = useState(null)
+    const [comment, setComment] = useState('')
 
-  return (
-    <div>
-      <h3 className="mb-3">Performance</h3>
+    useEffect(() => {
+        fetchPerformances()
+    }, [])
 
-      {/* Nav tabs */}
-      <ul className="nav nav-tabs mb-3">
-        {Tabs.map(t => (
-          <li className="nav-item" key={t.key}>
-            <button
-              className={`nav-link ${tab === t.key ? 'active' : ''}`}
-              onClick={() => setTab(t.key)}
-            >
-              {t.label}
-            </button>
-          </li>
-        ))}
-      </ul>
+    const fetchPerformances = async () => {
+        try {
+            let endpoint = '/api/performance'
 
-      {/* Tab content */}
-      {tab === 'goals'    && <Goals />}
-      {tab === 'self'     && <SelfAssessment />}
-      {tab === 'manager'  && <ManagerReview />}
-      {tab === 'reports'  && <PerfReports />}
-      {tab === 'history'  && <MyReviewsCard />}
-    </div>
-  )
-}
+            // Employees only see their own
+            if (userRole === 'employee') {
+                endpoint = '/api/performance/my'
+            }
+            // Managers see their team
+            else if (userRole === 'manager') {
+                endpoint = '/api/performance/team'
+            }
+            // HR sees all (default endpoint)
 
-/** Inline card for PERF-6: My Reviews (same logic you added to Dashboard) */
-function MyReviewsCard() {
-  const [reviews, setReviews] = React.useState([])
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await client.get('/api/pms/my-reviews')
-        setReviews(data.data || [])
-      } catch (_) {}
-    })()
-  }, [])
-  return (
-    <div className="card shadow-sm">
-      <div className="card-header">My Reviews</div>
-      <div className="card-body">
-        <ul className="list-group list-group-flush">
-          {reviews.slice(0,5).map(r => (
-            <li key={r.ID || r.id} className="list-group-item d-flex justify-content-between">
-              <span>Cycle #{r.CycleID || r.cycle_id}</span>
-              <strong>Rating: {r.Rating || r.rating}</strong>
-            </li>
-          ))}
-          {reviews.length === 0 && (
-            <li className="list-group-item text-muted">No reviews yet</li>
-          )}
-        </ul>
-      </div>
-    </div>
-  )
+            const { data } = await client.get(endpoint)
+            setPerformances(data)
+        } catch (error) {
+            console.error('Failed to fetch performances:', error)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleAddComment = async (performanceId) => {
+        if (!comment.trim()) return
+
+        try {
+            await client.post(`/api/performance/${performanceId}/comment`, {
+                comment: comment
+            })
+
+            setComment('')
+            setSelectedPerformance(null)
+            fetchPerformances() // Refresh list
+            alert('Comment added successfully!')
+        } catch (error) {
+            console.error('Failed to add comment:', error)
+            alert('Failed to add comment')
+        }
+    }
+
+    const handleUpdateScore = async (performanceId, score) => {
+        try {
+            await client.put(`/api/performance/${performanceId}`, {
+                score: parseFloat(score)
+            })
+
+            fetchPerformances()
+            alert('Score updated successfully!')
+        } catch (error) {
+            console.error('Failed to update score:', error)
+            alert('Failed to update score')
+        }
+    }
+
+    if (loading) {
+        return <div className="text-center mt-5">Loading performances...</div>
+    }
+
+    return (
+        <div className="container mt-4">
+            <div className="d-flex justify-content-between align-items-center mb-4">
+                <h2>Performance Reviews</h2>
+                <span className="badge bg-secondary">{userRole.toUpperCase()} View</span>
+            </div>
+
+            {/* Role-based info banner */}
+            {userRole === 'employee' && (
+                <div className="alert alert-info">
+                    <strong>Employee View:</strong> You can view your performance reviews and add comments.
+                </div>
+            )}
+
+            {userRole === 'manager' && (
+                <div className="alert alert-success">
+                    <strong>Manager View:</strong> You can view and edit performance reviews for your team members.
+                </div>
+            )}
+
+            {userRole === 'hr' && (
+                <div className="alert alert-danger">
+                    <strong>HR View:</strong> You have full access to all performance reviews.
+                </div>
+            )}
+
+            {performances.length === 0 ? (
+                <div className="alert alert-warning">No performance reviews found.</div>
+            ) : (
+                <div className="table-responsive">
+                    <table className="table table-striped">
+                        <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th>Period</th>
+                            <th>Score</th>
+                            <th>Status</th>
+                            <th>Comments</th>
+                            <th>Actions</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {performances.map((perf) => (
+                            <tr key={perf.id}>
+                                <td>{perf.employee_name}</td>
+                                <td>{perf.review_period}</td>
+                                <td>
+                                    {/* Manager and HR can edit score */}
+                                    {['manager', 'hr'].includes(userRole) ? (
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="5"
+                                            step="0.1"
+                                            className="form-control form-control-sm"
+                                            style={{ width: '80px' }}
+                                            defaultValue={perf.score}
+                                            onBlur={(e) => handleUpdateScore(perf.id, e.target.value)}
+                                        />
+                                    ) : (
+                                        <span className="badge bg-primary">{perf.score}/5</span>
+                                    )}
+                                </td>
+                                <td>
+                                        <span className={`badge ${
+                                            perf.status === 'completed' ? 'bg-success' :
+                                                perf.status === 'in_progress' ? 'bg-warning' :
+                                                    'bg-secondary'
+                                        }`}>
+                                            {perf.status}
+                                        </span>
+                                </td>
+                                <td>
+                                    <small className="text-muted">
+                                        {perf.comments || 'No comments'}
+                                    </small>
+                                </td>
+                                <td>
+                                    <button
+                                        className="btn btn-sm btn-outline-primary"
+                                        onClick={() => setSelectedPerformance(perf)}
+                                    >
+                                        Add Comment
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* Comment Modal */}
+            {selectedPerformance && (
+                <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                    <div className="modal-dialog">
+                        <div className="modal-content">
+                            <div className="modal-header">
+                                <h5 className="modal-title">Add Comment</h5>
+                                <button
+                                    className="btn-close"
+                                    onClick={() => {
+                                        setSelectedPerformance(null)
+                                        setComment('')
+                                    }}
+                                ></button>
+                            </div>
+                            <div className="modal-body">
+                                <p><strong>Employee:</strong> {selectedPerformance.employee_name}</p>
+                                <p><strong>Period:</strong> {selectedPerformance.review_period}</p>
+
+                                <div className="mb-3">
+                                    <label className="form-label">Your Comment:</label>
+                                    <textarea
+                                        className="form-control"
+                                        rows="4"
+                                        value={comment}
+                                        onChange={(e) => setComment(e.target.value)}
+                                        placeholder="Enter your feedback or comments..."
+                                    ></textarea>
+                                </div>
+                            </div>
+                            <div className="modal-footer">
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => {
+                                        setSelectedPerformance(null)
+                                        setComment('')
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={() => handleAddComment(selectedPerformance.id)}
+                                    disabled={!comment.trim()}
+                                >
+                                    Submit Comment
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
 }
