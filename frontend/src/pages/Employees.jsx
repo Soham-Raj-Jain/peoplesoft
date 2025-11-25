@@ -192,7 +192,7 @@ export default function Employees(){
       <div className="d-flex align-items-center mb-3">
         <h3 className="me-auto">Employee Directory</h3>
 
-        {(role === 'manager' || role === 'admin') && (
+        {(role === 'manager' || role === 'hr') && (
           <button
             className={`btn ${myTeamMode ? 'btn-secondary' : 'btn-outline-secondary'} me-2`}
             onClick={() => { setMyTeamMode(m => !m); setPage(1) }}
@@ -201,7 +201,7 @@ export default function Employees(){
           </button>
         )}
 
-        {role === 'admin' && (
+        {role === 'hr' && (
           <button className="btn btn-primary" onClick={openAdd}>Onboard</button>
         )}
       </div>
@@ -240,7 +240,7 @@ export default function Employees(){
           <th>Dept</th>
           {!myTeamMode && <th>Manager</th>}
           <th>Phone</th><th>Location</th>
-          {(role === 'admin' || role === 'manager') && <th style={{width:200}}>Actions</th>}
+          {(role === 'hr' || role === 'manager') && <th style={{width:200}}>Actions</th>}
         </tr></thead>
         <tbody>
           {rows.map(r => (
@@ -252,11 +252,11 @@ export default function Employees(){
               {!myTeamMode && <td>{r.manager_id ? (managerNameById.get(r.manager_id) || '-') : '-'}</td>}
               <td>{r.phone}</td>
               <td>{r.location}</td>
-              {(role === 'admin' || role === 'manager') && (
+              {(role === 'hr' || role === 'manager') && (
                 <td>
                   <div className="d-flex gap-2">
                     <button className="btn btn-sm btn-secondary" onClick={()=>openEdit(r)}>Edit</button>
-                    {role === 'admin' && (
+                    {role === 'hr' && (
                       <button className="btn btn-sm btn-danger" onClick={()=>offboard(r.id, r.user_id, r.name)}>Offboard</button>
                     )}
                   </div>
@@ -316,7 +316,7 @@ export default function Employees(){
                             onChange={e=>setForm({...form, user_role:e.target.value})} required>
                             <option value="employee">Employee</option>
                             <option value="manager">Manager</option>
-                            <option value="admin">HR/Admin</option>
+                            <option value="hr">HR/Admin</option>
                           </select>
                         </div>
                       </div>

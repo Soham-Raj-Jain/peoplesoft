@@ -147,7 +147,7 @@ export default function Onboarding() {
 
               <div className="col-md-6">
                 <label className="form-label">Role *</label>
-                <select 
+                <select
                   className="form-select"
                   value={form.role}
                   onChange={e => setForm({...form, role: e.target.value})}
@@ -155,7 +155,7 @@ export default function Onboarding() {
                 >
                   <option value="employee">Employee</option>
                   <option value="manager">Manager</option>
-                  <option value="admin">HR/Admin</option>
+                  <option value="hr">HR/Admin</option>
                 </select>
               </div>
 

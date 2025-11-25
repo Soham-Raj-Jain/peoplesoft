@@ -49,13 +49,11 @@ export default function App() {
                     {/* Everyone can see Leaves */}
                     <Link to="/leaves">Leaves</Link>
 
-                    {/* HR only */}
-                    {userRole === 'hr' && (
-                        <>
-                            <Link to="/performance">Performance</Link>
-                            <Link to="/reports/performance">Reports</Link>
-                        </>
-                    )}
+                    {/* Everyone can see Performance (with different access levels) */}
+                    <Link to="/performance">Performance</Link>
+
+                    {/* Everyone can see Reports (with different access levels) */}
+                    <Link to="/reports/performance">Reports</Link>
 
                     {/* Everyone */}
                     <Link to="/goals">Goals</Link>
@@ -83,6 +81,12 @@ export default function App() {
                 <Route path="/self-assessment" element={<PrivateRoute><SelfAssessment /></PrivateRoute>} />
                 <Route path="/onboarding" element={<PrivateRoute><Onboarding /></PrivateRoute>} />
 
+                {/* Performance - All can access but with different views */}
+                <Route path="/performance" element={<PrivateRoute><Performance /></PrivateRoute>} />
+
+                {/* Reports - All can access but with different views */}
+                <Route path="/reports/performance" element={<PrivateRoute><PerfReports /></PrivateRoute>} />
+
                 {/* Manager and HR only */}
                 <Route path="/employees" element={
                     <RoleBasedRoute allowedRoles={['manager', 'hr']}>
@@ -90,24 +94,7 @@ export default function App() {
                     </RoleBasedRoute>
                 } />
 
-                <Route path="/manager/review" element={
-                    <RoleBasedRoute allowedRoles={['manager', 'hr']}>
-                        <ManagerReview />
-                    </RoleBasedRoute>
-                } />
-
-                {/* HR only */}
-                <Route path="/performance" element={
-                    <RoleBasedRoute allowedRoles={['hr']}>
-                        <Performance />
-                    </RoleBasedRoute>
-                } />
-
-                <Route path="/reports/performance" element={
-                    <RoleBasedRoute allowedRoles={['hr']}>
-                        <PerfReports />
-                    </RoleBasedRoute>
-                } />
+                <Route path="/manager/review" element={<PrivateRoute><ManagerReview /></PrivateRoute>} />
             </Routes>
         </div>
     )

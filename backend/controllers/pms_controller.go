@@ -126,7 +126,7 @@ func ListMyGoals(c *gin.Context) {
 
 // GET /api/pms/manager/goals?employee_id=&cycle_id=
 func ManagerListEmployeeGoals(c *gin.Context) {
-	// (Assumes middleware ensures role = manager/admin)
+	// (Assumes middleware ensures role = manager/hr)
 	emp := c.Query("employee_id")
 	cycle := c.Query("cycle_id")
 
@@ -183,10 +183,10 @@ func SubmitSelfAssessment(c *gin.Context) {
 
 /* ---------- PERF-4: manager rating & feedback ---------- */
 
-// POST /api/pms/reviews  (manager/admin)
+// POST /api/pms/reviews  (manager/hr)
 func CreateOrUpdateReview(c *gin.Context) {
 	email, role := mustUser(c)
-	if role != "manager" && role != "admin" {
+	if role != "manager" && role != "hr" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient privileges"})
 		return
 	}
@@ -227,11 +227,11 @@ func CreateOrUpdateReview(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": mv})
 }
 
-/* ---------- PERF-5: admin analytics/reporting ---------- */
+/* ---------- PERF-5: hr analytics/reporting ---------- */
 
 // GET /api/pms/admin/report?cycle_id=&department_id=
 func AdminReport(c *gin.Context) {
-	if c.GetString("role") != "admin" {
+	if c.GetString("role") != "hr" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient privileges"})
 		return
 	}

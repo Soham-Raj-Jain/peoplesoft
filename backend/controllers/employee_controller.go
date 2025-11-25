@@ -187,7 +187,7 @@ func ListTeam(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"count": len(rows), "data": rows})
 }
 
-// GET /api/my-team  (manager/admin)
+// GET /api/my-team  (manager/hr)
 // Uses email from JWT to resolve the manager's Employee.ID, then returns direct reports.
 func ListMyTeam(c *gin.Context) {
 	emailVal, _ := c.Get("email")
