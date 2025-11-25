@@ -42,8 +42,8 @@ func SetupRoutes(r *gin.Engine) {
 		api.PUT("/leaves/:id/reject", controllers.RejectLeave)
 
 		// Performance
-		api.GET("/performance", controllers.ListPerformance)
-		api.POST("/performance", controllers.CreatePerformance)
+		//api.GET("/performance", controllers.ListPerformance)
+		//api.POST("/performance", controllers.CreatePerformance)
 	}
 
 	//pms

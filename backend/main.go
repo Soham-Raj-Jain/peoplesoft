@@ -43,14 +43,14 @@ func main() {
 	r.Use(config.CorsMiddleware())
 
 	// Auth routes
-	auth := r.Group("/api/auth")
-	{
-		auth.POST("/auth0-login", controllers.Auth0Login)
-	}
+	//auth := r.Group("/api/auth")
+	//{
+	//	auth.POST("/auth0-login", controllers.Auth0Login)
+	//	}
 
 	// Performance routes
 	perf := r.Group("/api/performance")
-	
+
 	perf.Use(middleware.AuthRequired()) // Your JWT middleware
 	{
 		perf.GET("/", controllers.GetTeamPerformances)               // HR only

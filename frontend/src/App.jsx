@@ -41,10 +41,8 @@ export default function App() {
                 <nav className="d-flex gap-3 mb-4 flex-wrap align-items-center">
                     <Link to="/">Dashboard</Link>
 
-                    {/* HR and Manager can see Employees */}
-                    {(['hr', 'manager'].includes(userRole)) && (
-                        <Link to="/employees">Employees</Link>
-                    )}
+                    {/* Everyone can see Employee Directory */}
+                    <Link to="/employees">Employees</Link>
 
                     {/* Everyone can see Leaves */}
                     <Link to="/leaves">Leaves</Link>
@@ -87,12 +85,14 @@ export default function App() {
                 {/* Reports - All can access but with different views */}
                 <Route path="/reports/performance" element={<PrivateRoute><PerfReports /></PrivateRoute>} />
 
-                {/* Manager and HR only */}
-                <Route path="/employees" element={
-                    <RoleBasedRoute allowedRoles={['manager', 'hr']}>
-                        <Employees />
-                    </RoleBasedRoute>
-                } />
+                {/* Performance - All can access but with different views */}
+                <Route path="/performance" element={<PrivateRoute><Performance /></PrivateRoute>} />
+
+                {/* Reports - All can access but with different views */}
+                <Route path="/reports/performance" element={<PrivateRoute><PerfReports /></PrivateRoute>} />
+
+                {/* All authenticated users can view employees (with role-based restrictions inside) */}
+                <Route path="/employees" element={<PrivateRoute><Employees /></PrivateRoute>} />
 
                 <Route path="/manager/review" element={<PrivateRoute><ManagerReview /></PrivateRoute>} />
             </Routes>

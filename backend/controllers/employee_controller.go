@@ -13,15 +13,16 @@ import (
 
 // DTO to include user fields in the directory row
 type EmployeeRow struct {
-	ID           uint   `json:"id"`
-	UserID       uint   `json:"user_id"`
-	Name         string `json:"name"`
-	Email        string `json:"email"`
-	Designation  string `json:"designation"`
-	DepartmentID uint   `json:"department_id"`
-	ManagerID    *uint  `json:"manager_id"`
-	Phone        string `json:"phone"`
-	Location     string `json:"location"`
+	ID           uint    `json:"id"`
+	UserID       uint    `json:"user_id"`
+	Name         string  `json:"name"`
+	Email        string  `json:"email"`
+	Designation  string  `json:"designation"`
+	DepartmentID uint    `json:"department_id"`
+	ManagerID    *uint   `json:"manager_id"`
+	ManagerName  *string `json:"manager_name"`
+	Phone        string  `json:"phone"`
+	Location     string  `json:"location"`
 }
 
 // GET /api/employees?q=&department_id=&designation=&page=&page_size=
@@ -39,8 +40,11 @@ func ListEmployees(c *gin.Context) {
 	}
 
 	db := config.DB.Table("employees e").
-		Select(`e.id, e.user_id, u.name, u.email, e.designation, e.department_id, e.manager_id, e.phone, e.location`).
-		Joins("JOIN users u ON u.id = e.user_id")
+		Select(`e.id, e.user_id, u.name, u.email, e.designation, e.department_id, e.manager_id,
+			mu.name as manager_name, e.phone, e.location`).
+		Joins("JOIN users u ON u.id = e.user_id").
+		Joins("LEFT JOIN employees me ON me.id = e.manager_id").
+		Joins("LEFT JOIN users mu ON mu.id = me.user_id")
 
 	if q != "" {
 		like := "%" + q + "%"
@@ -97,8 +101,11 @@ func GetEmployee(c *gin.Context) {
 	id := c.Param("id")
 	var row EmployeeRow
 	err := config.DB.Table("employees e").
-		Select(`e.id, e.user_id, u.name, u.email, e.designation, e.department_id, e.manager_id, e.phone, e.location`).
+		Select(`e.id, e.user_id, u.name, u.email, e.designation, e.department_id, e.manager_id,
+			mu.name as manager_name, e.phone, e.location`).
 		Joins("JOIN users u ON u.id = e.user_id").
+		Joins("LEFT JOIN employees me ON me.id = e.manager_id").
+		Joins("LEFT JOIN users mu ON mu.id = me.user_id").
 		Where("e.id = ?", id).
 		Scan(&row).Error
 	if err != nil {
@@ -175,8 +182,11 @@ func ListTeam(c *gin.Context) {
 	managerID := c.Param("managerId")
 	var rows []EmployeeRow
 	err := config.DB.Table("employees e").
-		Select(`e.id, e.user_id, u.name, u.email, e.designation, e.department_id, e.manager_id, e.phone, e.location`).
+		Select(`e.id, e.user_id, u.name, u.email, e.designation, e.department_id, e.manager_id,
+			mu.name as manager_name, e.phone, e.location`).
 		Joins("JOIN users u ON u.id = e.user_id").
+		Joins("LEFT JOIN employees me ON me.id = e.manager_id").
+		Joins("LEFT JOIN users mu ON mu.id = me.user_id").
 		Where("e.manager_id = ?", managerID).
 		Order("u.name asc").
 		Scan(&rows).Error
@@ -187,7 +197,7 @@ func ListTeam(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"count": len(rows), "data": rows})
 }
 
-// GET /api/my-team  (manager/admin)
+// GET /api/my-team  (manager/hr)
 // Uses email from JWT to resolve the manager's Employee.ID, then returns direct reports.
 func ListMyTeam(c *gin.Context) {
 	emailVal, _ := c.Get("email")
@@ -211,8 +221,11 @@ func ListMyTeam(c *gin.Context) {
 	// fetch team (direct reports)
 	var rows []EmployeeRow
 	if err := config.DB.Table("employees e").
-		Select(`e.id, e.user_id, u.name, u.email, e.designation, e.department_id, e.manager_id, e.phone, e.location`).
+		Select(`e.id, e.user_id, u.name, u.email, e.designation, e.department_id, e.manager_id,
+			mu.name as manager_name, e.phone, e.location`).
 		Joins("JOIN users u ON u.id = e.user_id").
+		Joins("LEFT JOIN employees me ON me.id = e.manager_id").
+		Joins("LEFT JOIN users mu ON mu.id = me.user_id").
 		Where("e.manager_id = ?", managerEmp.ID).
 		Order("u.name asc").
 		Scan(&rows).Error; err != nil {
