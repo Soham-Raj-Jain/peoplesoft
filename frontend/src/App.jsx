@@ -85,6 +85,12 @@ export default function App() {
                 {/* Reports - All can access but with different views */}
                 <Route path="/reports/performance" element={<PrivateRoute><PerfReports /></PrivateRoute>} />
 
+                {/* Performance - All can access but with different views */}
+                <Route path="/performance" element={<PrivateRoute><Performance /></PrivateRoute>} />
+
+                {/* Reports - All can access but with different views */}
+                <Route path="/reports/performance" element={<PrivateRoute><PerfReports /></PrivateRoute>} />
+
                 {/* All authenticated users can view employees (with role-based restrictions inside) */}
                 <Route path="/employees" element={<PrivateRoute><Employees /></PrivateRoute>} />
 
