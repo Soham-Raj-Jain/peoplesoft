@@ -1,57 +1,267 @@
 import React, { useEffect, useState } from 'react'
 import client from '../api/client'
 
-export default function Leaves(){
-  const [rows, setRows] = useState([])
-  const [form, setForm] = useState({ user_id: 0, start_date: '', end_date: '', type: 'Casual', reason: '' })
+const LEAVE_TYPES = [
+  { value: 'sick', label: 'Sick Leave' },
+  { value: 'casual', label: 'Casual Leave' },
+  { value: 'vacation', label: 'Vacation Leave' },
+]
 
-  const load = async () => {
-    const { data } = await client.get('/api/leaves')
-    setRows(data.data || [])
+const workingDaysBetween = (startStr, endStr) => {
+  if (!startStr || !endStr) return 0
+  const start = new Date(startStr)
+  const end = new Date(endStr)
+  if (end < start) return 0
+
+  let count = 0
+  const cur = new Date(start)
+  while (cur <= end) {
+    const day = cur.getDay() // 0=Sun, 6=Sat
+    if (day !== 0 && day !== 6) {
+      count++
+    }
+    cur.setDate(cur.getDate() + 1)
   }
-  useEffect(()=>{ load() }, [])
+  return count
+}
+
+export default function Leaves() {
+  const [rows, setRows] = useState([])
+  const [balances, setBalances] = useState([])
+  const [form, setForm] = useState({
+    start_date: '',
+    end_date: '',
+    type: 'sick',
+    reason: ''
+  })
+  const [view, setView] = useState('my') // 'my' | 'team'
+  const [error, setError] = useState('')
+
+  const role = localStorage.getItem('role') || ''
+
+  const today = new Date().toISOString().slice(0, 10)
+
+  const loadMy = async () => {
+    const [leavesRes, balRes] = await Promise.all([
+      client.get('/api/leaves/my'),
+      client.get('/api/leaves/balance')
+    ])
+    setRows(leavesRes.data.data || [])
+    setBalances(balRes.data.data || [])
+    setView('my')
+  }
+
+  const loadTeam = async () => {
+    const { data } = await client.get('/api/leaves/team')
+    setRows(data.data || [])
+    setView('team')
+  }
+
+  useEffect(() => {
+    loadMy()
+  }, [])
+
+  const getRemainingForType = (type) => {
+    const rec = balances.find(b => b.type === type)
+    return rec ? rec.remaining : null
+  }
 
   const submit = async (e) => {
     e.preventDefault()
+    setError('')
+
+    const days = workingDaysBetween(form.start_date, form.end_date)
+    if (days <= 0) {
+      setError('Please select at least one working day.')
+      return
+    }
+
+    const remaining = getRemainingForType(form.type)
+    if (remaining != null && days > remaining) {
+      setError(`You only have ${remaining} ${form.type} days remaining, but selected ${days}.`)
+      return
+    }
+
     await client.post('/api/leaves', form)
-    setForm({ user_id: 0, start_date: '', end_date: '', type: 'Casual', reason: '' })
-    load()
+
+    setForm({
+      start_date: '',
+      end_date: '',
+      type: form.type, // keep last used type
+      reason: ''
+    })
+
+    // reload with fresh balances
+    view === 'team' ? loadTeam() : loadMy()
   }
 
-  const approve = async (id) => { await client.put(`/api/leaves/${id}/approve`); load() }
-  const reject = async (id) => { await client.put(`/api/leaves/${id}/reject`); load() }
+  const approve = async (id) => {
+    await client.put(`/api/leaves/${id}/approve`)
+    view === 'team' ? loadTeam() : loadMy()
+  }
+
+  const reject = async (id) => {
+    await client.put(`/api/leaves/${id}/reject`)
+    view === 'team' ? loadTeam() : loadMy()
+  }
+
+  const canApprove = role === 'manager'
 
   return (
     <div>
-      <h3>Leave Management</h3>
+      {/* Header + view buttons */}
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h3>Leave Management</h3>
+        <div className="btn-group">
+          <button
+            type="button"
+            className={`btn btn-sm ${view === 'my' ? 'btn-primary' : 'btn-outline-primary'}`}
+            onClick={loadMy}
+          >
+            My Leaves
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${view === 'team' ? 'btn-primary' : 'btn-outline-primary'}`}
+            onClick={loadTeam}
+          >
+            My Team
+          </button>
+        </div>
+      </div>
+
+      {/* Balances (only when viewing own leaves) */}
+      {view === 'my' && balances.length > 0 && (
+        <div className="mb-3">
+          <h6>Annual Leave Balance</h6>
+          <div className="d-flex flex-wrap gap-2">
+            {balances.map(b => (
+              <div key={b.type} className="badge bg-light text-dark border">
+                {b.type.toUpperCase()}: {b.remaining} / {b.total} days remaining
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Error message */}
+      {error && (
+        <div className="alert alert-danger py-2">{error}</div>
+      )}
+
+      {/* Request form */}
       <form onSubmit={submit} className="card card-body mb-3">
         <div className="row g-2">
-          <div className="col"><input className="form-control" placeholder="User ID" value={form.user_id} onChange={e=>setForm({...form, user_id: Number(e.target.value)})} /></div>
-          <div className="col"><input type="date" className="form-control" value={form.start_date} onChange={e=>setForm({...form, start_date: e.target.value})} /></div>
-          <div className="col"><input type="date" className="form-control" value={form.end_date} onChange={e=>setForm({...form, end_date: e.target.value})} /></div>
-          <div className="col"><input className="form-control" placeholder="Type" value={form.type} onChange={e=>setForm({...form, type: e.target.value})} /></div>
-          <div className="col"><input className="form-control" placeholder="Reason" value={form.reason} onChange={e=>setForm({...form, reason: e.target.value})} /></div>
-          <div className="col-auto"><button className="btn btn-primary">Request</button></div>
+          <div className="col">
+            <label className="form-label">Start Date</label>
+            <input
+              type="date"
+              className="form-control"
+              min={today}                    // no past dates
+              value={form.start_date}
+              onChange={e => setForm({ ...form, start_date: e.target.value })}
+              required
+            />
+          </div>
+          <div className="col">
+            <label className="form-label">End Date</label>
+            <input
+              type="date"
+              className="form-control"
+              min={form.start_date || today} // ensure end >= start
+              value={form.end_date}
+              onChange={e => setForm({ ...form, end_date: e.target.value })}
+              required
+            />
+          </div>
+          <div className="col">
+            <label className="form-label">Type</label>
+            <select
+              className="form-select"
+              value={form.type}
+              onChange={e => setForm({ ...form, type: e.target.value })}
+            >
+              {LEAVE_TYPES.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="col">
+            <label className="form-label">Reason</label>
+            <input
+              className="form-control"
+              placeholder="Reason"
+              value={form.reason}
+              onChange={e => setForm({ ...form, reason: e.target.value })}
+              required
+            />
+          </div>
+          <div className="col-auto d-flex align-items-end">
+            <button className="btn btn-primary">Request</button>
+          </div>
         </div>
       </form>
 
+      {/* Leaves table */}
       <table className="table table-bordered">
-        <thead><tr><th>ID</th><th>User</th><th>Start</th><th>End</th><th>Type</th><th>Status</th><th>Action</th></tr></thead>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>User ID</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>Type</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th>Approved By</th>
+            <th>Action</th>
+          </tr>
+        </thead>
         <tbody>
-          {rows.map(r => (
-            <tr key={r.ID || r.id}>
-              <td>{r.ID || r.id}</td>
-              <td>{r.UserID || r.user_id}</td>
-              <td>{(r.StartDate || r.start_date || '').slice(0,10)}</td>
-              <td>{(r.EndDate || r.end_date || '').slice(0,10)}</td>
-              <td>{r.Type || r.type}</td>
-              <td>{r.Status || r.status}</td>
-              <td className="d-flex gap-2">
-                <button className="btn btn-sm btn-success" onClick={()=>approve(r.ID || r.id)}>Approve</button>
-                <button className="btn btn-sm btn-warning" onClick={()=>reject(r.ID || r.id)}>Reject</button>
+          {rows.map(r => {
+            const id = r.ID || r.id
+            const status = (r.Status || r.status || '').toLowerCase()
+            const canAct = canApprove && status === 'pending'
+
+            return (
+              <tr key={id}>
+                <td>{id}</td>
+                <td>{r.UserID || r.user_id}</td>
+                <td>{(r.StartDate || r.start_date || '').slice(0, 10)}</td>
+                <td>{(r.EndDate || r.end_date || '').slice(0, 10)}</td>
+                <td>{(r.Type || r.type || '').toUpperCase()}</td>
+                <td>{r.Reason || r.reason}</td>
+                <td style={{ textTransform: 'capitalize' }}>{status}</td>
+                <td>{r.ApprovedBy || r.approved_by || '-'}</td>
+                <td className="d-flex gap-2">
+                  {canAct && (
+                    <>
+                      <button
+                        className="btn btn-sm btn-success"
+                        onClick={() => approve(id)}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        className="btn btn-sm btn-warning"
+                        onClick={() => reject(id)}
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={9} className="text-center text-muted">
+                No leaves found
               </td>
             </tr>
-          ))}
+          )}
         </tbody>
       </table>
     </div>

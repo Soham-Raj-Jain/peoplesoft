@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"peoplesoft/config"
+	"peoplesoft/models"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +21,6 @@ type Claims struct {
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
-
 		fmt.Println("auth is ", auth)
 
 		if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
@@ -27,6 +28,7 @@ func AuthRequired() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+
 		tokenStr := strings.TrimPrefix(auth, "Bearer ")
 
 		claims := &Claims{}
@@ -41,8 +43,18 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 
+		// Look up user by email to get userID
+		var user models.User
+		if err := config.DB.Where("email = ?", claims.Email).First(&user).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+			c.Abort()
+			return
+		}
+
+		// Put into context
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
+		c.Set("userID", user.ID)
 
 		c.Next()
 	}

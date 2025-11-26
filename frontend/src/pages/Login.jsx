@@ -17,7 +17,7 @@ export default function Login() {
     if (isAuthenticated && localStorage.getItem('token')) {
         return <Navigate to="/" replace />
     }
-
+    
     const handleSubmit = async (e) => {
         e.preventDefault()
         setError('')

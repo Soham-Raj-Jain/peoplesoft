@@ -9,7 +9,7 @@ type Leave struct {
 	EndDate    time.Time
 	Type       string
 	Reason     string
-	Status     string `gorm:"default:pending"`
+	Status     string `gorm:"default:pending"` // pending / approved / rejected
 	ApprovedBy uint
 	CreatedAt  time.Time
 }
