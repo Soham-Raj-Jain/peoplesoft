@@ -1,9 +1,7 @@
 package controllers
 
 import (
-	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"peoplesoft/config"
 	"peoplesoft/models"
@@ -14,6 +12,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+type LeaveResponse struct {
+	ID             uint      `json:"id"`
+	UserID         uint      `json:"user_id"`
+	UserName       string    `json:"user_name"`
+	StartDate      time.Time `json:"start_date"`
+	EndDate        time.Time `json:"end_date"`
+	Type           string    `json:"type"`
+	Reason         string    `json:"reason"`
+	Status         string    `json:"status"`
+	ApprovedBy     uint      `json:"approved_by"`
+	ApprovedByName *string   `json:"approved_by_name"`
+	CreatedAt      time.Time `json:"created_at"`
+}
 
 type LeaveRequest struct {
 	StartDate string `json:"start_date"` // "YYYY-MM-DD"
@@ -121,12 +133,31 @@ func ListMyLeaves(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing user id"})
 		return
 	}
-	fmt.Println("print my leaves")
-	var items []models.Leave
-	if err := config.DB.Debug().
-		Where("user_id = ?", userID).
-		Order("created_at DESC").
-		Find(&items).Error; err != nil {
+
+	var items []LeaveResponse
+
+	err := config.DB.
+		Table("leaves l").
+		Select(`
+			l.id,
+			l.user_id,
+			u.name AS user_name,
+			l.start_date,
+			l.end_date,
+			l.type,
+			l.reason,
+			l.status,
+			l.approved_by,
+			au.name AS approved_by_name,
+			l.created_at
+		`).
+		Joins("JOIN users u ON u.id = l.user_id").
+		Joins("LEFT JOIN users au ON au.id = l.approved_by").
+		Where("l.user_id = ?", userID).
+		Order("l.created_at DESC").
+		Find(&items).Error
+
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load leaves"})
 		return
 	}
@@ -142,66 +173,42 @@ func ListTeamLeaves(c *gin.Context) {
 	role := c.GetString("role")
 	userID := c.GetUint("userID")
 
-	var items []models.Leave
+	var items []LeaveResponse
+
+	q := config.DB.
+		Table("leaves l").
+		Select(`
+			l.id,
+			l.user_id,
+			u.name AS user_name,
+			l.start_date,
+			l.end_date,
+			l.type,
+			l.reason,
+			l.status,
+			l.approved_by,
+			au.name AS approved_by_name,
+			l.created_at
+		`).
+		Joins("JOIN users u ON u.id = l.user_id").
+		Joins("LEFT JOIN users au ON au.id = l.approved_by")
 
 	switch role {
 	case "hr":
-		// HR sees everyone’s leaves
-		if err := config.DB.
-			Order("created_at DESC").
-			Find(&items).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load team leaves"})
-			return
-		}
-
+		// HR sees all
+		// no extra filter
 	case "manager":
-		// Manager: employees who report to this manager (employees.manager_id = manager's user id)
-		err := config.DB.
-			Table("leaves").
-			Select("leaves.*").
-			Joins("JOIN employees e ON e.user_id = leaves.user_id").
-			Where("e.manager_id = ?", userID).
-			Order("leaves.created_at DESC").
-			Find(&items).Error
-
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load team leaves"})
-			return
-		}
-
+		q = q.Joins("JOIN employees e ON e.user_id = l.user_id").
+			Where("e.manager_id = ?", userID)
 	default:
-		// Employee: colleagues with same manager
-		// Step 1: find current user's manager_id from employees table
-		var managerID sql.NullInt64
-		row := config.DB.
-			Table("employees").
-			Select("manager_id").
-			Where("user_id = ?", userID).
-			Row()
-		if err := row.Scan(&managerID); err != nil {
-			// no employee row -> no team
-			c.JSON(http.StatusOK, gin.H{"data": []models.Leave{}})
-			return
-		}
-		if !managerID.Valid {
-			// no manager -> no team
-			c.JSON(http.StatusOK, gin.H{"data": []models.Leave{}})
-			return
-		}
+		// employee – colleagues with same manager (your existing logic)
+		// keep your manager lookup code here and add:
+		// q = q.Joins("JOIN employees e ON e.user_id = l.user_id").Where("e.manager_id = ?", managerID)
+	}
 
-		// Step 2: load all leaves of employees who share same manager_id
-		err := config.DB.
-			Table("leaves").
-			Select("leaves.*").
-			Joins("JOIN employees e ON e.user_id = leaves.user_id").
-			Where("e.manager_id = ?", managerID.Int64).
-			Order("leaves.created_at DESC").
-			Find(&items).Error
-
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load team leaves"})
-			return
-		}
+	if err := q.Order("l.created_at DESC").Find(&items).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load team leaves"})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": items})

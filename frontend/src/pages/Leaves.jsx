@@ -7,6 +7,7 @@ const LEAVE_TYPES = [
   { value: 'vacation', label: 'Vacation Leave' },
 ]
 
+// Count working days (Mon–Fri) between two dates (inclusive)
 const workingDaysBetween = (startStr, endStr) => {
   if (!startStr || !endStr) return 0
   const start = new Date(startStr)
@@ -16,7 +17,7 @@ const workingDaysBetween = (startStr, endStr) => {
   let count = 0
   const cur = new Date(start)
   while (cur <= end) {
-    const day = cur.getDay() // 0=Sun, 6=Sat
+    const day = cur.getDay() // 0 = Sun, 6 = Sat
     if (day !== 0 && day !== 6) {
       count++
     }
@@ -32,19 +33,21 @@ export default function Leaves() {
     start_date: '',
     end_date: '',
     type: 'sick',
-    reason: ''
+    reason: '',
   })
   const [view, setView] = useState('my') // 'my' | 'team'
   const [error, setError] = useState('')
 
   const role = localStorage.getItem('role') || ''
+  const canApprove = role === 'manager'
 
   const today = new Date().toISOString().slice(0, 10)
 
   const loadMy = async () => {
+    setError('')
     const [leavesRes, balRes] = await Promise.all([
       client.get('/api/leaves/my'),
-      client.get('/api/leaves/balance')
+      client.get('/api/leaves/balance'),
     ])
     setRows(leavesRes.data.data || [])
     setBalances(balRes.data.data || [])
@@ -52,6 +55,7 @@ export default function Leaves() {
   }
 
   const loadTeam = async () => {
+    setError('')
     const { data } = await client.get('/api/leaves/team')
     setRows(data.data || [])
     setView('team')
@@ -62,7 +66,7 @@ export default function Leaves() {
   }, [])
 
   const getRemainingForType = (type) => {
-    const rec = balances.find(b => b.type === type)
+    const rec = balances.find((b) => b.type === type)
     return rec ? rec.remaining : null
   }
 
@@ -72,13 +76,15 @@ export default function Leaves() {
 
     const days = workingDaysBetween(form.start_date, form.end_date)
     if (days <= 0) {
-      setError('Please select at least one working day.')
+      setError('Please select at least one working day (weekends are ignored).')
       return
     }
 
     const remaining = getRemainingForType(form.type)
     if (remaining != null && days > remaining) {
-      setError(`You only have ${remaining} ${form.type} days remaining, but selected ${days}.`)
+      setError(
+        `You only have ${remaining} ${form.type} day(s) remaining, but selected ${days}.`
+      )
       return
     }
 
@@ -87,12 +93,15 @@ export default function Leaves() {
     setForm({
       start_date: '',
       end_date: '',
-      type: form.type, // keep last used type
-      reason: ''
+      type: form.type, // keep last selected type
+      reason: '',
     })
 
-    // reload with fresh balances
-    view === 'team' ? loadTeam() : loadMy()
+    if (view === 'team') {
+      loadTeam()
+    } else {
+      loadMy()
+    }
   }
 
   const approve = async (id) => {
@@ -105,8 +114,6 @@ export default function Leaves() {
     view === 'team' ? loadTeam() : loadMy()
   }
 
-  const canApprove = role === 'manager'
-
   return (
     <div>
       {/* Header + view buttons */}
@@ -115,14 +122,18 @@ export default function Leaves() {
         <div className="btn-group">
           <button
             type="button"
-            className={`btn btn-sm ${view === 'my' ? 'btn-primary' : 'btn-outline-primary'}`}
+            className={`btn btn-sm ${
+              view === 'my' ? 'btn-primary' : 'btn-outline-primary'
+            }`}
             onClick={loadMy}
           >
             My Leaves
           </button>
           <button
             type="button"
-            className={`btn btn-sm ${view === 'team' ? 'btn-primary' : 'btn-outline-primary'}`}
+            className={`btn btn-sm ${
+              view === 'team' ? 'btn-primary' : 'btn-outline-primary'
+            }`}
             onClick={loadTeam}
           >
             My Team
@@ -130,14 +141,19 @@ export default function Leaves() {
         </div>
       </div>
 
-      {/* Balances (only when viewing own leaves) */}
+      {/* Balances on My Leaves */}
       {view === 'my' && balances.length > 0 && (
         <div className="mb-3">
           <h6>Annual Leave Balance</h6>
           <div className="d-flex flex-wrap gap-2">
-            {balances.map(b => (
-              <div key={b.type} className="badge bg-light text-dark border">
-                {b.type.toUpperCase()}: {b.remaining} / {b.total} days remaining
+            {balances.map((b) => (
+              <div
+                key={b.type}
+                className="badge bg-light text-dark border"
+                style={{ fontSize: '0.85rem' }}
+              >
+                {b.type.toUpperCase()}: {b.remaining} / {b.total} day(s)
+                remaining
               </div>
             ))}
           </div>
@@ -145,9 +161,7 @@ export default function Leaves() {
       )}
 
       {/* Error message */}
-      {error && (
-        <div className="alert alert-danger py-2">{error}</div>
-      )}
+      {error && <div className="alert alert-danger py-2">{error}</div>}
 
       {/* Request form */}
       <form onSubmit={submit} className="card card-body mb-3">
@@ -157,9 +171,11 @@ export default function Leaves() {
             <input
               type="date"
               className="form-control"
-              min={today}                    // no past dates
+              min={today}
               value={form.start_date}
-              onChange={e => setForm({ ...form, start_date: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, start_date: e.target.value })
+              }
               required
             />
           </div>
@@ -168,9 +184,11 @@ export default function Leaves() {
             <input
               type="date"
               className="form-control"
-              min={form.start_date || today} // ensure end >= start
+              min={form.start_date || today}
               value={form.end_date}
-              onChange={e => setForm({ ...form, end_date: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, end_date: e.target.value })
+              }
               required
             />
           </div>
@@ -179,10 +197,12 @@ export default function Leaves() {
             <select
               className="form-select"
               value={form.type}
-              onChange={e => setForm({ ...form, type: e.target.value })}
+              onChange={(e) => setForm({ ...form, type: e.target.value })}
             >
-              {LEAVE_TYPES.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+              {LEAVE_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
               ))}
             </select>
           </div>
@@ -192,7 +212,9 @@ export default function Leaves() {
               className="form-control"
               placeholder="Reason"
               value={form.reason}
-              onChange={e => setForm({ ...form, reason: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, reason: e.target.value })
+              }
               required
             />
           </div>
@@ -207,7 +229,7 @@ export default function Leaves() {
         <thead>
           <tr>
             <th>ID</th>
-            <th>User ID</th>
+            <th>Employee</th>
             <th>Start</th>
             <th>End</th>
             <th>Type</th>
@@ -218,21 +240,30 @@ export default function Leaves() {
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => {
-            const id = r.ID || r.id
-            const status = (r.Status || r.status || '').toLowerCase()
+          {rows.map((r) => {
+            const id = r.id || r.ID
+            const status = (r.status || r.Status || '').toLowerCase()
             const canAct = canApprove && status === 'pending'
+
+            const userName =
+              r.user_name || r.UserName || r.user_id || r.UserID
+            const approvedByName =
+              r.approved_by_name || r.ApprovedByName || '-'
 
             return (
               <tr key={id}>
                 <td>{id}</td>
-                <td>{r.UserID || r.user_id}</td>
-                <td>{(r.StartDate || r.start_date || '').slice(0, 10)}</td>
-                <td>{(r.EndDate || r.end_date || '').slice(0, 10)}</td>
-                <td>{(r.Type || r.type || '').toUpperCase()}</td>
-                <td>{r.Reason || r.reason}</td>
+                <td>{userName}</td>
+                <td>
+                  {(r.start_date || r.StartDate || '').slice(0, 10)}
+                </td>
+                <td>
+                  {(r.end_date || r.EndDate || '').slice(0, 10)}
+                </td>
+                <td>{(r.type || r.Type || '').toUpperCase()}</td>
+                <td>{r.reason || r.Reason}</td>
                 <td style={{ textTransform: 'capitalize' }}>{status}</td>
-                <td>{r.ApprovedBy || r.approved_by || '-'}</td>
+                <td>{approvedByName}</td>
                 <td className="d-flex gap-2">
                   {canAct && (
                     <>
