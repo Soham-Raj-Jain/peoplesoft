@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"fmt"
 	"peoplesoft/controllers"
 	"peoplesoft/middleware"
 
@@ -9,19 +8,11 @@ import (
 )
 
 func SetupRoutes(r *gin.Engine) {
-	auth := r.Group("/api/auth")
-	{
-		auth.POST("/register", controllers.Register)
-		auth.POST("/login", controllers.Login)
-		auth.POST("/auth0-login", controllers.Auth0Login)
-
-	}
-
+	// Protected API routes
 	api := r.Group("/api")
 	api.Use(middleware.AuthRequired())
 	{
 		// Employees
-		fmt.Println("test befote")
 		api.GET("/employees", controllers.ListEmployees)
 		api.GET("/employees/:id", controllers.GetEmployee)
 		api.POST("/employees", controllers.CreateEmployee)
@@ -35,28 +26,14 @@ func SetupRoutes(r *gin.Engine) {
 		// Manager team
 		api.GET("/managers/:managerId/team", controllers.ListTeam)
 
-		// // Leaves
-		// api.GET("/leaves", controllers.ListLeaves)
-		// api.POST("/leaves", controllers.CreateLeave)
-		// api.PUT("/leaves/:id/approve", controllers.ApproveLeave)
-		// api.PUT("/leaves/:id/reject", controllers.RejectLeave)
-
-		// Performance
-		//api.GET("/performance", controllers.ListPerformance)
-		//api.POST("/performance", controllers.CreatePerformance)
+		// Leaves
+		api.GET("/leaves", controllers.ListLeaves)
+		api.POST("/leaves", controllers.CreateLeave)
+		api.PUT("/leaves/:id/approve", controllers.ApproveLeave)
+		api.PUT("/leaves/:id/reject", controllers.RejectLeave)
 	}
 
-	leaves := api.Group("/leaves")
-	{
-		leaves.POST("", controllers.CreateLeave)
-		leaves.GET("/my", controllers.ListMyLeaves)
-		leaves.GET("/team", controllers.ListTeamLeaves)
-		leaves.GET("/balance", controllers.GetMyLeaveBalance)
-		leaves.PUT("/:id/approve", controllers.ApproveLeave)
-		leaves.PUT("/:id/reject", controllers.RejectLeave)
-	}
-
-	//pms
+	// PMS routes
 	pms := api.Group("/pms")
 	{
 		// Employee
