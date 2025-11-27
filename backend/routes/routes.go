@@ -59,4 +59,10 @@ func SetupRoutes(r *gin.Engine) {
 		// History
 		pms.GET("/my-reviews", controllers.MyReviews)
 	}
+
+	// Chatbot routes
+	chatbot := api.Group("/chatbot")
+	{
+		chatbot.POST("/query", controllers.HandleChatbotQuery)
+	}
 }

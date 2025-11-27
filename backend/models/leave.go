@@ -10,6 +10,6 @@ type Leave struct {
 	Type       string
 	Reason     string
 	Status     string `gorm:"default:pending"` // pending / approved / rejected
-	ApprovedBy uint
+	ApprovedBy *uint  // Nullable - set when approved/rejected
 	CreatedAt  time.Time
 }

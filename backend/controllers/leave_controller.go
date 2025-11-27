@@ -22,7 +22,7 @@ type LeaveResponse struct {
 	Type           string    `json:"type"`
 	Reason         string    `json:"reason"`
 	Status         string    `json:"status"`
-	ApprovedBy     uint      `json:"approved_by"`
+	ApprovedBy     *uint     `json:"approved_by"` // Nullable
 	ApprovedByName *string   `json:"approved_by_name"`
 	CreatedAt      time.Time `json:"created_at"`
 }

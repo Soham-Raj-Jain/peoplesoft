@@ -13,6 +13,7 @@ import PerfReports from './pages/PerfReports'
 import Onboarding from './pages/Onboarding'
 import AuthCallback from './pages/AuthCallback'
 import Unauthorized from './pages/Unauthorized'
+import Chatbot from './components/Chatbot'
 
 // PrivateRoute component
 function PrivateRoute({ children }) {
@@ -46,6 +47,9 @@ export default function App() {
 
     return (
         <div>
+            {/* Chatbot - Show on all authenticated pages */}
+            {!!localStorage.getItem('token') && <Chatbot />}
+
             {showNav && (
                 <nav style={{
                     background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
