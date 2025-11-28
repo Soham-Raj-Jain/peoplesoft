@@ -120,18 +120,14 @@ func GetDashboardStats(c *gin.Context) {
 
 	} else {
 		// Employee sees their own data
-		config.DB.Table("leaves").Where("user_id = ? AND status = ?", userID, "pending").Count(&stats.PendingLeaves)
-		fmt.Printf("Employee - Pending Leaves: %d\n", stats.PendingLeaves)
 
+		// Active goals = submitted, in_progress, pending (NOT completed or archived)
 		config.DB.Table("goals").
-			Where("user_id = ? AND status IN (?)", userID, []string{"in_progress", "in-progress", "pending"}).
+			Where("user_id = ? AND status IN (?)", userID, []string{"in_progress", "in-progress", "pending", "submitted"}).
 			Count(&stats.ActiveGoals)
-		fmt.Printf("Employee - Active Goals: %d\n", stats.ActiveGoals)
+		fmt.Printf("✅ Employee - Active Goals: %d\n", stats.ActiveGoals)
 
-		config.DB.Table("performances").
-			Where("employee_id = ? AND status != ?", userID, "completed").
-			Count(&stats.UpcomingReviews)
-		fmt.Printf("Employee - Upcoming Reviews: %d\n", stats.UpcomingReviews)
+		// Rest of the code...
 	}
 
 	fmt.Printf("Final Stats: %+v\n", stats)
@@ -188,30 +184,26 @@ func getQuarterlyResults(role string, userID uint) *QuarterlyResults {
 
 	// For HR, count ALL goals in system
 	if role == "hr" {
-		// Count completed goals
+		// Count goals with status 'completed' OR ('submitted' AND progress = 100)
 		err := config.DB.Table("goals").
-			Where("status = ?", "completed").
+			Where("status = ? OR (status = ? AND progress = ?)", "completed", "submitted", 100).
 			Count(&results.GoalsCompleted).Error
 
 		if err != nil {
 			fmt.Printf("❌ Error counting completed goals: %v\n", err)
 		} else {
-			fmt.Printf("✅ Completed goals: %d\n", results.GoalsCompleted)
+			fmt.Printf("✅ HR - Completed goals: %d\n", results.GoalsCompleted)
 		}
 
 		// Count total goals
-		err = config.DB.Table("goals").Count(&results.TotalGoals).Error
-		if err != nil {
-			fmt.Printf("❌ Error counting total goals: %v\n", err)
-		} else {
-			fmt.Printf("✅ Total goals: %d\n", results.TotalGoals)
-		}
+		config.DB.Table("goals").Count(&results.TotalGoals)
 
 	} else if role == "manager" {
 		// Manager sees team goals
 		config.DB.Table("goals g").
 			Joins("JOIN employees e ON g.user_id = e.user_id").
-			Where("e.manager_id = ? AND g.status = ?", userID, "completed").
+			Where("e.manager_id = ? AND (g.status = ? OR (g.status = ? AND g.progress = ?))",
+				userID, "completed", "submitted", 100).
 			Count(&results.GoalsCompleted)
 
 		config.DB.Table("goals g").
@@ -219,19 +211,16 @@ func getQuarterlyResults(role string, userID uint) *QuarterlyResults {
 			Where("e.manager_id = ?", userID).
 			Count(&results.TotalGoals)
 
-		fmt.Printf("✅ Manager - Completed: %d, Total: %d\n", results.GoalsCompleted, results.TotalGoals)
-
 	} else {
 		// Employee sees their own goals
 		config.DB.Table("goals").
-			Where("user_id = ? AND status = ?", userID, "completed").
+			Where("user_id = ? AND (status = ? OR (status = ? AND progress = ?))",
+				userID, "completed", "submitted", 100).
 			Count(&results.GoalsCompleted)
 
 		config.DB.Table("goals").
 			Where("user_id = ?", userID).
 			Count(&results.TotalGoals)
-
-		fmt.Printf("✅ Employee - Completed: %d, Total: %d\n", results.GoalsCompleted, results.TotalGoals)
 	}
 
 	// Calculate percentage

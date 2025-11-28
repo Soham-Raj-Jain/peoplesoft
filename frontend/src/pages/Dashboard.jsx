@@ -364,7 +364,7 @@ export default function Dashboard() {
                                     <Doughnut data={chartData} options={chartOptions} />
                                 </div>
                                 <div className="goals-summary">
-                                    {quarterly.goals_completed || quarterly.GoalsCompleted} of {quarterly.total_goals || quarterly.TotalGoals} goals completed
+                                    {quarterly.goals_completed ?? quarterly.GoalsCompleted ?? 0} of {quarterly.total_goals ?? quarterly.TotalGoals ?? 0} goals completed
                                 </div>
                             </>
                         ) : (
