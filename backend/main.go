@@ -26,21 +26,23 @@ func main() {
 		log.Fatalf("DB connection failed: %v", err)
 	}
 
-	// Auto migrate models
+	// Auto migrate ALL models (including PMS models)
 	if err := config.DB.AutoMigrate(
 		&models.User{},
 		&models.Employee{},
 		&models.Department{},
 		&models.Leave{},
+		&models.LeaveAllocation{},
 		&models.Performance{},
 		&models.ReviewCycle{},
 		&models.Goal{},
 		&models.SelfAssessment{},
 		&models.ManagerReview{},
-		&models.LeaveAllocation{},
 	); err != nil {
 		log.Fatalf("AutoMigrate failed: %v", err)
 	}
+	
+	log.Println("✅ Database migrations completed successfully")
 
 	// Initialize Gin router
 	r := gin.Default()
@@ -67,20 +69,73 @@ func main() {
 		dashboard.GET("/stats", controllers.GetDashboardStats)
 	}
 
-	// Performance Routes
+	// Performance Routes (Legacy - keep for backward compatibility)
 	performance := r.Group("/api/performance")
 	performance.Use(middleware.AuthRequired())
 	{
-		//	performance.GET("/", controllers.GetAllPerformances)
 		performance.GET("/my", controllers.GetMyPerformances)
 		performance.GET("/team", controllers.GetTeamPerformances)
 		performance.POST("/:id/comment", controllers.AddPerformanceComment)
 		performance.PUT("/:id", controllers.UpdatePerformanceScore)
-		//	performance.POST("/:id/accept", controllers.AcceptPerformance)
-		//	performance.POST("/:id/rediscuss", controllers.RequestRediscussion)
 	}
 
-	// All other routes (employees, leaves, goals, etc.)
+	// ========================================
+	// PMS ROUTES (New Consolidated System)
+	// ========================================
+	pms := r.Group("/api/pms")
+	pms.Use(middleware.AuthRequired())
+	{
+		// ========== GOALS MANAGEMENT ==========
+		
+		// Employee: Create and manage their own goals
+		pms.POST("/goals", controllers.CreateGoal)
+		pms.PUT("/goals/:id", controllers.UpdateGoal)
+		pms.GET("/my-goals", controllers.ListMyGoals)
+		
+		// Get goals assigned to current user
+		pms.GET("/my-assigned-goals", controllers.GetMyAssignedGoals)
+		
+		// Accept and submit goals
+		pms.POST("/goals/:id/accept", controllers.AcceptGoal)
+		pms.POST("/goals/:id/submit", controllers.SubmitGoalForApproval)
+		
+		// ========== HR FUNCTIONS ==========
+		
+		// HR assigns goals to managers
+		pms.POST("/hr/assign-goals", middleware.RoleMiddleware("hr"), controllers.HRAssignGoalsToManager)
+		
+		// ========== MANAGER FUNCTIONS ==========
+		
+		// Manager assigns goals to employees
+		pms.POST("/manager/assign-goals", middleware.RoleMiddleware("manager"), controllers.ManagerAssignGoalsToEmployee)
+		
+		// View employee goals (manager/hr only)
+		pms.GET("/manager/goals", middleware.RoleMiddleware("manager", "hr"), controllers.ManagerListEmployeeGoals)
+		
+		// ========== APPROVALS & REVIEWS ==========
+		
+		// Get pending approvals (manager/hr only)
+		pms.GET("/pending-approvals", middleware.RoleMiddleware("manager", "hr"), controllers.GetPendingApprovals)
+		
+		// Approve goal and create review
+		pms.POST("/reviews/:goal_id/approve", middleware.RoleMiddleware("manager", "hr"), controllers.ApproveGoalAndReview)
+		
+		// View my reviews
+		pms.GET("/my-reviews", controllers.MyReviews)
+		pms.GET("/reviews-given", controllers.ReviewsGiven)
+		pms.GET("/all-reviews", controllers.AllReviews) 
+		// ========== SELF ASSESSMENT ==========
+		
+		// Submit self-assessment
+		pms.POST("/self-assess", controllers.SubmitSelfAssessment)
+		
+		// ========== REPORTS ==========
+		
+		// Performance reports (role-based access)
+		pms.GET("/reports/performance", controllers.PerformanceReports)
+	}
+
+	// All other routes (employees, leaves, etc.)
 	routes.SetupRoutes(r)
 
 	// Start server
@@ -90,6 +145,7 @@ func main() {
 	log.Println("📍 Port: 8080")
 	log.Println("📊 Dashboard API: http://localhost:8080/api/dashboard/stats")
 	log.Println("🔐 Auth API: http://localhost:8080/api/auth/login")
+	log.Println("🎯 PMS API: http://localhost:8080/api/pms/*")
 	log.Println("========================================")
 
 	r.Run(":8080")

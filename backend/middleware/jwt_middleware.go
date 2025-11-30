@@ -18,6 +18,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// AuthRequired validates JWT token and sets user context
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
@@ -57,5 +58,26 @@ func AuthRequired() gin.HandlerFunc {
 		c.Set("userID", user.ID)
 
 		c.Next()
+	}
+}
+
+// RoleMiddleware checks if user has one of the allowed roles
+func RoleMiddleware(allowedRoles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userRole := c.GetString("role")
+		
+		// Check if user role is in allowed roles
+		for _, role := range allowedRoles {
+			if userRole == role {
+				c.Next()
+				return
+			}
+		}
+		
+		// User doesn't have required role
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "Access denied. Required role: " + allowedRoles[0],
+		})
+		c.Abort()
 	}
 }
