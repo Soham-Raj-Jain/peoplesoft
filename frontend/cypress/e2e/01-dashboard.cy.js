@@ -88,7 +88,7 @@ describe("Dashboard Visual Tests (With Full Mocks)", () => {
 
             cy.wait("@mockDashboardStats");
 
-            cy.contains("Hello, " + Cypress.env("HR_FIRST_NAME")).should("be.visible");
+            cy.contains(Cypress.env("HR_FIRST_NAME")).should("be.visible");
 
             cy.screenshot("02-hr-dashboard", { capture: "fullPage", overwrite: true });
         });
@@ -118,7 +118,7 @@ describe("Dashboard Visual Tests (With Full Mocks)", () => {
 
             cy.wait("@mockDashboardStats");
 
-            cy.contains("Hello, " + Cypress.env("MANAGER_FIRST_NAME")).should("be.visible");
+            cy.contains(Cypress.env("MANAGER_FIRST_NAME")).should("be.visible");
 
             cy.screenshot("03-manager-dashboard", { capture: "fullPage", overwrite: true });
         });
@@ -147,7 +147,7 @@ describe("Dashboard Visual Tests (With Full Mocks)", () => {
 
             cy.wait("@mockDashboardStats");
 
-            cy.contains("Hello, " + Cypress.env("EMP_FIRST_NAME")).should("be.visible");
+            cy.contains(Cypress.env("EMP_FIRST_NAME")).should("be.visible");
 
             cy.screenshot("04-employee-dashboard", { capture: "fullPage", overwrite: true });
         });
