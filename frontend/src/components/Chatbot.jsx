@@ -28,15 +28,26 @@ export default function Chatbot() {
       timestamp: new Date()
     }
 
-    setMessages(prev => [...prev, userMessage])
+    const newMessages = [...messages, userMessage]
+    setMessages(newMessages)
     setInput('')
     setIsLoading(true)
 
     try {
       const token = localStorage.getItem('token')
+
+      // Format history for backend (exclude local-only fields like timestamp)
+      const history = newMessages.map(msg => ({
+        role: msg.role === 'bot' ? 'assistant' : 'user',
+        content: msg.content
+      }))
+
       const response = await axios.post(
         'http://localhost:8080/api/chatbot/query',
-        { question: input.trim() },
+        {
+          question: input.trim(),
+          history: history
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       )
 
@@ -50,9 +61,10 @@ export default function Chatbot() {
       setMessages(prev => [...prev, botMessage])
 
       // If action was executed, reload relevant data (e.g., leaves page)
-      if (response.data.action && response.data.action.type === 'apply_leave') {
-        // Optionally trigger a refresh or show a success indicator
-        console.log('Leave application action completed:', response.data.action)
+      if (response.data.action) {
+        console.log('Action completed:', response.data.action)
+        // You might want to trigger a global refresh event here
+        window.dispatchEvent(new Event('data-update'))
       }
     } catch (error) {
       const errorMessage = {

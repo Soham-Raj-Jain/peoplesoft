@@ -39,7 +39,8 @@ type GroqResponse struct {
 
 // ChatbotQueryRequest represents the incoming request from frontend
 type ChatbotQueryRequest struct {
-	Question string `json:"question" binding:"required"`
+	Question string        `json:"question" binding:"required"`
+	History  []GroqMessage `json:"history"`
 }
 
 // ChatbotResponse represents the response to frontend
@@ -50,7 +51,7 @@ type ChatbotResponse struct {
 
 // ChatbotAction represents an action the chatbot wants to perform
 type ChatbotAction struct {
-	Type   string                 `json:"type"`   // "apply_leave", "cancel_leave", etc.
+	Type   string                 `json:"type"`   // "apply_leave", "assign_goal", etc.
 	Params map[string]interface{} `json:"params"` // action parameters
 }
 
@@ -82,7 +83,7 @@ func HandleChatbotQuery(c *gin.Context) {
 	context := buildUserContext(userID.(uint), employee.ID, role)
 
 	// Call Groq API
-	answer, err := queryGroqAPI(req.Question, context, role)
+	answer, err := queryGroqAPI(req.Question, req.History, context, role)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to process query: " + err.Error()})
 		return
@@ -299,51 +300,69 @@ func buildUserContext(userID uint, employeeID uint, role string) string {
 	// For managers: add comprehensive team information
 	if role == "manager" || role == "hr" {
 		var teamMembers []models.Employee
-		if err := config.DB.Where("manager_id = ?", employeeID).Find(&teamMembers).Error; err == nil && len(teamMembers) > 0 {
-			context += fmt.Sprintf("\nTeam Members (%d):\n", len(teamMembers))
+		if role == "manager" {
+			// Managers see their direct reports
+			config.DB.Where("manager_id = ?", employeeID).Find(&teamMembers)
+		} else {
+			// HR sees all managers (for assignment) and potentially all employees
+			// For simplicity, let's list all Managers for HR to assign goals to
+			config.DB.Joins("JOIN users ON users.id = employees.user_id").Where("users.role = ?", "manager").Find(&teamMembers)
+		}
+
+		if len(teamMembers) > 0 {
+			if role == "hr" {
+				context += fmt.Sprintf("\nAssignable Managers (%d):\n", len(teamMembers))
+			} else {
+				context += fmt.Sprintf("\nTeam Members (%d):\n", len(teamMembers))
+			}
+			
 			for _, tm := range teamMembers {
 				var tmUser models.User
 				config.DB.First(&tmUser, tm.UserID)
-				context += fmt.Sprintf("- %s\n", tmUser.Name)
+				context += fmt.Sprintf("- %s (ID: %d)\n", tmUser.Name, tm.UserID) // Use UserID for goal assignment
 				context += fmt.Sprintf("  Designation: %s, Location: %s\n", tm.Designation, tm.Location)
 				context += fmt.Sprintf("  Email: %s, Phone: %s\n", tmUser.Email, tm.Phone)
 
-				// Get team member's leave balances
-				var tmBalances []models.LeaveAllocation
-				if err := config.DB.Where("user_id = ?", tm.UserID).Find(&tmBalances).Error; err == nil && len(tmBalances) > 0 {
-					context += "  Leave Balances: "
-					for i, b := range tmBalances {
-						remaining := b.Total - b.Used
-						if i > 0 {
-							context += ", "
+				// Get team member's leave balances (only for direct manager)
+				if role == "manager" {
+					var tmBalances []models.LeaveAllocation
+					if err := config.DB.Where("user_id = ?", tm.UserID).Find(&tmBalances).Error; err == nil && len(tmBalances) > 0 {
+						context += "  Leave Balances: "
+						for i, b := range tmBalances {
+							remaining := b.Total - b.Used
+							if i > 0 {
+								context += ", "
+							}
+							context += fmt.Sprintf("%s: %d/%d", b.Type, remaining, b.Total)
 						}
-						context += fmt.Sprintf("%s: %d/%d", b.Type, remaining, b.Total)
+						context += "\n"
 					}
-					context += "\n"
 				}
 			}
 		}
 
-		// Pending leave approvals - Get user IDs of team members
-		var teamUserIDs []uint
-		for _, tm := range teamMembers {
-			teamUserIDs = append(teamUserIDs, tm.UserID)
-		}
+		// Pending leave approvals (Manager only)
+		if role == "manager" {
+			var teamUserIDs []uint
+			for _, tm := range teamMembers {
+				teamUserIDs = append(teamUserIDs, tm.UserID)
+			}
 
-		if len(teamUserIDs) > 0 {
-			var pendingLeaves []models.Leave
-			config.DB.Where("user_id IN ? AND status = ?", teamUserIDs, "pending").Find(&pendingLeaves)
+			if len(teamUserIDs) > 0 {
+				var pendingLeaves []models.Leave
+				config.DB.Where("user_id IN ? AND status = ?", teamUserIDs, "pending").Find(&pendingLeaves)
 
-			if len(pendingLeaves) > 0 {
-				context += fmt.Sprintf("\nPending Leave Approvals (%d):\n", len(pendingLeaves))
-				for _, pl := range pendingLeaves {
-					var plUser models.User
-					config.DB.First(&plUser, pl.UserID)
-					context += fmt.Sprintf("- %s: %s to %s (%s)\n",
-						plUser.Name,
-						pl.StartDate.Format("2006-01-02"),
-						pl.EndDate.Format("2006-01-02"),
-						pl.Type)
+				if len(pendingLeaves) > 0 {
+					context += fmt.Sprintf("\nPending Leave Approvals (%d):\n", len(pendingLeaves))
+					for _, pl := range pendingLeaves {
+						var plUser models.User
+						config.DB.First(&plUser, pl.UserID)
+						context += fmt.Sprintf("- %s: %s to %s (%s)\n",
+							plUser.Name,
+							pl.StartDate.Format("2006-01-02"),
+							pl.EndDate.Format("2006-01-02"),
+							pl.Type)
+					}
 				}
 			}
 		}
@@ -365,7 +384,7 @@ func buildUserContext(userID uint, employeeID uint, role string) string {
 }
 
 // queryGroqAPI sends the query to Groq API and returns the response
-func queryGroqAPI(question, context, role string) (string, error) {
+func queryGroqAPI(question string, history []GroqMessage, context, role string) (string, error) {
 	apiKey := os.Getenv("GROQ_API_KEY")
 	if apiKey == "" || apiKey == "your-groq-api-key-here" {
 		return "⚠️ Groq API key not configured. Please set GROQ_API_KEY in your .env file.\n\nYou can get a free API key from: https://console.groq.com/keys", nil
@@ -393,28 +412,48 @@ Guidelines:
 
 IMPORTANT - Action Detection:
 When the user wants to PERFORM AN ACTION (not just ask a question), you must respond with a special JSON format at the END of your message.
-Actions include: applying for leave, canceling leave, updating goals, etc.
+Actions include: applying for leave, assigning goals.
 
+1. APPLY LEAVE:
 If the user wants to apply for leave, your response should END with:
 ACTION: {"type":"apply_leave","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","leave_type":"sick/casual/annual","reason":"reason text"}
 
+2. ASSIGN GOAL:
+If the user (HR or Manager) wants to assign a goal to someone, your response should END with:
+ACTION: {"type":"assign_goal","target_user_id":123,"title":"Goal Title","description":"Goal Description","timeline":"YYYY-MM-DD"}
+
 Examples:
 - "I want to apply leave from Dec 25 to Dec 27" -> ACTION: {"type":"apply_leave","start_date":"2025-12-25","end_date":"2025-12-27","leave_type":"casual","reason":""}
-- "Apply sick leave for tomorrow" -> ACTION: {"type":"apply_leave","start_date":"2025-11-28","end_date":"2025-11-28","leave_type":"sick","reason":""}
+- "Assign goal 'Fix bugs' to Maria (ID: 5)" -> ACTION: {"type":"assign_goal","target_user_id":5,"title":"Fix bugs","description":"","timeline":""}
+- "Assign goal to Jack to complete report by Friday" -> ACTION: {"type":"assign_goal","target_user_id":12,"title":"Complete report","description":"","timeline":"2025-12-05"}
 
-Today's date is 2025-11-27. Use this to calculate relative dates like "tomorrow", "next week", etc.
+Today's date is %s. Use this to calculate relative dates like "tomorrow", "next week", etc.
 If leave type is not specified, default to "casual".
-If dates are ambiguous, ask for clarification instead of creating an action.
-`, role, context)
+If target user for goal is ambiguous (e.g. "Assign to David" but multiple Davids exist or ID unknown), ASK for clarification/ID instead of creating an action.
+`, role, context, time.Now().Format("2006-01-02"))
 
 	// Prepare Groq API request
+	messages := []GroqMessage{
+		{Role: "system", Content: systemPrompt},
+	}
+	
+	// Add conversation history
+	if len(history) > 0 {
+		// Limit history to last 10 messages to avoid token limits
+		start := 0
+		if len(history) > 10 {
+			start = len(history) - 10
+		}
+		messages = append(messages, history[start:]...)
+	}
+	
+	// Add current question
+	messages = append(messages, GroqMessage{Role: "user", Content: question})
+
 	groqReq := GroqRequest{
-		Model: "llama-3.3-70b-versatile", // Fast and accurate model
-		Messages: []GroqMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: question},
-		},
-		Stream: false,
+		Model:    "llama-3.3-70b-versatile", // Fast and accurate model
+		Messages: messages,
+		Stream:   false,
 	}
 
 	jsonData, err := json.Marshal(groqReq)
@@ -496,6 +535,8 @@ func executeAction(action *ChatbotAction, userID uint, c *gin.Context) (string, 
 	switch action.Type {
 	case "apply_leave":
 		return applyLeave(action.Params, userID, c)
+	case "assign_goal":
+		return assignGoal(action.Params, userID, c)
 	default:
 		return "", fmt.Errorf("unknown action type: %s", action.Type)
 	}
@@ -584,4 +625,85 @@ func applyLeave(params map[string]interface{}, userID uint, c *gin.Context) (str
 	}
 
 	return successMsg, nil
+}
+
+// assignGoal creates a goal assignment
+func assignGoal(params map[string]interface{}, assignerID uint, c *gin.Context) (string, error) {
+	// Extract parameters
+	targetUserIDFloat, ok := params["target_user_id"].(float64)
+	if !ok {
+		return "", fmt.Errorf("target_user_id is required")
+	}
+	targetUserID := uint(targetUserIDFloat)
+
+	title, ok := params["title"].(string)
+	if !ok || title == "" {
+		return "", fmt.Errorf("title is required")
+	}
+
+	description := ""
+	if d, ok := params["description"].(string); ok {
+		description = d
+	}
+
+	timeline := ""
+	if t, ok := params["timeline"].(string); ok {
+		timeline = t
+	}
+
+	// Verify permissions
+	assignerRole := c.GetString("role")
+	var targetUser models.User
+	if err := config.DB.First(&targetUser, targetUserID).Error; err != nil {
+		return "", fmt.Errorf("target user not found")
+	}
+
+	var level string
+	var status string
+
+	if assignerRole == "hr" {
+		if targetUser.Role != "manager" {
+			return "", fmt.Errorf("HR can only assign goals to Managers")
+		}
+		level = "hr_manager"
+		status = "hr_assigned"
+	} else if assignerRole == "manager" {
+		// Verify target is in manager's team
+		var emp models.Employee
+		if err := config.DB.Where("user_id = ?", targetUserID).First(&emp).Error; err != nil {
+			return "", fmt.Errorf("target employee not found")
+		}
+		
+		var managerEmp models.Employee
+		config.DB.Where("user_id = ?", assignerID).First(&managerEmp)
+
+		if emp.ManagerID == nil || *emp.ManagerID != managerEmp.ID {
+			return "", fmt.Errorf("you can only assign goals to your team members")
+		}
+		level = "manager_employee"
+		status = "manager_assigned"
+	} else {
+		return "", fmt.Errorf("only HR and Managers can assign goals")
+	}
+
+	// Create goal
+	// Use a default cycle ID (e.g., 1) or try to find active cycle
+	cycleID := uint(1) 
+
+	goal := models.Goal{
+		UserID:       targetUserID,
+		CycleID:      cycleID,
+		Title:        title,
+		Description:  description,
+		Timeline:     timeline,
+		Status:       status,
+		AssignedByID: &assignerID,
+		Level:        level,
+	}
+
+	if err := config.DB.Create(&goal).Error; err != nil {
+		return "", fmt.Errorf("failed to create goal: %v", err)
+	}
+
+	return fmt.Sprintf("✅ Goal assigned successfully to %s!\n\n🎯 Title: %s\n📅 Timeline: %s", targetUser.Name, title, timeline), nil
 }
